@@ -2,9 +2,23 @@ local M = {}
 
 M.name = "draft"
 
--- Sprawdza, czy provider ma działać dla danego bufora
+-- 1. Zwracamy bufor, parser i język, jeśli wszystko jest OK
 function M.supports_buffer(bufnr)
-	return vim.bo[bufnr].filetype == "draft"
+	bufnr = bufnr ~= 0 and bufnr or vim.api.nvim_get_current_buf()
+
+	-- Sprawdzamy filetype (zakładając, że dla Twojego parsera to "draft")
+	local ft = vim.api.nvim_get_option_value("filetype", { buf = bufnr })
+	if ft ~= "draft" then
+		return false
+	end
+
+	local ok, parser = pcall(vim.treesitter.get_parser, bufnr, "draft")
+	if not ok or not parser then
+		return false
+	end
+
+	-- Zwracamy true oraz tabelę z gotowym kontekstem
+	return true, { parser = parser, ft = ft, buf = bufnr, lang = "draft" }
 end
 
 -- Opcjonalne: Status wyświetlany w :OutlineStatus
@@ -12,15 +26,23 @@ function M.get_status()
 	return { "Draft Treesitter Provider Active" }
 end
 
--- Główna funkcja zbierająca symbole
+-- 2. Główna funkcja przyjmuje teraz opcjonalny argument `context` (opts)
 function M.request_symbols(callback, opts)
 	opts = opts or {}
 	local bufnr = opts.bufnr or vim.api.nvim_get_current_buf()
 
-	local ok, parser = pcall(vim.treesitter.get_parser, bufnr, "draft")
-	if not ok or not parser then
-		callback({}, opts)
-		return
+	-- Sprawdzamy, czy w `opts` (przekazanym z supports_buffer) mamy już gotowy parser!
+	local parser = opts.parser
+
+	-- Jeśli z jakiegoś powodu funkcja została wywołana pomijając supports_buffer,
+	-- pobieramy parser tradycyjną metodą jako zabezpieczenie (fallback).
+	if not parser then
+		local ok, p = pcall(vim.treesitter.get_parser, bufnr, "draft")
+		if not ok or not p then
+			callback({}, opts)
+			return
+		end
+		parser = p
 	end
 
 	local tree = parser:parse()[1]
@@ -117,7 +139,6 @@ function M.request_symbols(callback, opts)
 					break
 				end
 			end
-			-- Jeśli grupa nie znajduje się w żadnej sekcji, ląduje na samej górze drzewa
 			if not placed then
 				table.insert(tree_symbols, sym)
 			end
