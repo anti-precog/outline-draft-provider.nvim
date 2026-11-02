@@ -1,15 +1,14 @@
-;; Sekcje (kontenery nadrzędne)
+;; Sekcje
 (section
   (title) @name) @definition.section
 
-;; Grupy (kontenery) - opcjonalnie z nagłówkiem
+;; Grupy (łapiemy opcjonalnie header i footer wewnątrz grupy)
 (group
-  (header)? @name) @definition.group
+  (header)? @definition.header
+  (footer)? @definition.footer) @definition.group
 
-;; Elementy treści i znaczniki (widoczne jako liście w drzewie)
-(narration) @name @definition.narration
-(quotation) @name @definition.quotation
-(dialog) @name @definition.dialog
-(comment) @name @definition.comment
-(header) @name @definition.header
-(footer) @name @definition.footer
+;; Elementy treści
+(narration) @definition.narration
+(quotation) @definition.quotation
+(dialog) @definition.dialog
+(comment) @definition.comment

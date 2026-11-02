@@ -57,7 +57,6 @@ local function contains(parent, child)
 	local c_start = child.range.start
 	local c_end = child.range["end"]
 
-	-- Ignorujemy sytuację, gdy węzeł zawiera sam siebie
 	if
 		p_start.line == c_start.line
 		and p_start.character == c_start.character
@@ -74,16 +73,13 @@ local function contains(parent, child)
 	return start_after and end_before
 end
 
---- Formatuje tekst (używany tylko dla tytułów sekcji, grup, nagłówków i stopek)
+--- Formatuje tekst węzła
 local function format_node_text(node, bufnr)
 	local text = vim.treesitter.get_node_text(node, bufnr) or ""
 	text = text:match("([^\r\n]*)") or text
 	text = vim.trim(text)
-	if #text > 50 then
-		text = text:sub(1, 47) .. "..."
-	end
-	if text == "" then
-		text = "[elem]"
+	if #text > 40 then
+		text = text:sub(1, 37) .. "..." -- Poprawiono błąd: '+' zmieniono na '..'
 	end
 	return text
 end
@@ -125,8 +121,43 @@ function M.request_symbols(callback, opts, info)
 	end
 
 	local raw_symbols = {}
+	local group_metas = {} -- Tabela pomocnicza przechowująca header/footer dla grup wg zakresu
 
-	-- Iteracja po dopasowaniach zapytania Treesittera
+	-- Pierwszy przebieg: zbieramy nagłówki (header) i stopki (footer) dla grup
+	for _, match, _ in query:iter_matches(root, bufnr, 0, -1) do
+		for id, nodes in pairs(match) do
+			local capture_name = query.captures[id]
+			local node = type(nodes) == "table" and nodes[1] or nodes
+
+			if capture_name == "definition.group" then
+				local sr, sc, er, ec = node:range()
+				local key = string.format("%d:%d-%d:%d", sr, sc, er, ec)
+				group_metas[key] = group_metas[key] or {}
+			elseif capture_name == "definition.header" then
+				for id_inner, nodes_inner in pairs(match) do
+					if query.captures[id_inner] == "definition.group" then
+						local g_node = type(nodes_inner) == "table" and nodes_inner[1] or nodes_inner
+						local sr, sc, er, ec = g_node:range()
+						local key = string.format("%d:%d-%d:%d", sr, sc, er, ec)
+						group_metas[key] = group_metas[key] or {}
+						group_metas[key].header = format_node_text(node, bufnr)
+					end
+				end
+			elseif capture_name == "definition.footer" then
+				for id_inner, nodes_inner in pairs(match) do
+					if query.captures[id_inner] == "definition.group" then
+						local g_node = type(nodes_inner) == "table" and nodes_inner[1] or nodes_inner
+						local sr, sc, er, ec = g_node:range()
+						local key = string.format("%d:%d-%d:%d", sr, sc, er, ec)
+						group_metas[key] = group_metas[key] or {}
+						group_metas[key].footer = format_node_text(node, bufnr)
+					end
+				end
+			end
+		end
+	end
+
+	-- Drugi przebieg: właściwe budowanie listy symboli
 	for _, match, _ in query:iter_matches(root, bufnr, 0, -1) do
 		local name, range, kind, is_container = nil, nil, 13, false
 
@@ -141,31 +172,47 @@ function M.request_symbols(callback, opts, info)
 			}
 
 			if capture_name == "definition.section" then
-				kind = 18 -- 18 = Section
+				kind = 18
 				is_container = true
 			elseif capture_name == "definition.group" then
-				kind = 12 -- 12 = Group/Folder
+				kind = 12
 				is_container = true
+
+				local key = string.format("%d:%d-%d:%d", start_row, start_col, end_row, end_col)
+				local meta = group_metas[key]
+				local base_name = name or "Group"
+
+				if meta then
+					local extras = {}
+					if meta.header and meta.header ~= "" then
+						table.insert(extras, "H: " .. meta.header)
+					end
+					if meta.footer and meta.footer ~= "" then
+						table.insert(extras, "F: " .. meta.footer)
+					end
+					if #extras > 0 then
+						name = string.format("%s [%s]", base_name, table.concat(extras, ", "))
+					else
+						name = base_name
+					end
+				else
+					name = base_name
+				end
 			elseif capture_name == "definition.narration" then
-				kind = 13 -- Variable / Narration
-				name = "Narration" -- Wyświetlana nazwa zamiast tekstu
+				kind = 13
+				name = "Narration"
 			elseif capture_name == "definition.quotation" then
-				kind = 15 -- String / Quotation
-				name = "Quotation" -- Wyświetlana nazwa zamiast tekstu
+				kind = 15
+				name = "Quotation"
 			elseif capture_name == "definition.dialog" then
-				kind = 1 -- Text / Dialog
-				name = "Dialog" -- Wyświetlana nazwa zamiast tekstu
+				kind = 1
+				name = "Dialog"
 			elseif capture_name == "definition.comment" then
-				kind = 1 -- Comment
-				name = "Comment" -- Wyświetlana nazwa zamiast tekstu
-			elseif capture_name == "definition.header" then
-				kind = 12 -- Header w grupie
-				name = "Header: " .. format_node_text(node, bufnr)
-			elseif capture_name == "definition.footer" then
-				kind = 12 -- Footer w grupie
-				name = "Footer: " .. format_node_text(node, bufnr)
+				kind = 1
+				name = "Comment"
+			elseif capture_name == "definition.header" or capture_name == "definition.footer" then
+				name = nil
 			elseif capture_name == "name" then
-				-- Dla sekcji lub grupy pobieramy tekst tytułu/nagłówka
 				name = format_node_text(node, bufnr)
 			end
 		end
@@ -182,7 +229,7 @@ function M.request_symbols(callback, opts, info)
 		end
 	end
 
-	-- Sortowanie od największych do najmniejszych zakresów (kontenery pierwej)
+	-- Sortowanie od największych do najmniejszych zakresów
 	table.sort(raw_symbols, function(a, b)
 		local span_a = (a.range["end"].line - a.range.start.line) * 1000
 			+ (a.range["end"].character - a.range.start.character)
