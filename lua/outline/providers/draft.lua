@@ -180,15 +180,15 @@ function M.request_symbols(callback, opts, info)
 
 				local key = string.format("%d:%d-%d:%d", start_row, start_col, end_row, end_col)
 				local meta = group_metas[key]
-				local base_name = name or "Group"
+				local base_name = name or ""
 
 				if meta then
 					local extras = {}
 					if meta.header and meta.header ~= "" then
-						table.insert(extras, "H: " .. meta.header)
+						table.insert(extras, meta.header)
 					end
 					if meta.footer and meta.footer ~= "" then
-						table.insert(extras, "F: " .. meta.footer)
+						table.insert(extras, meta.footer)
 					end
 					if #extras > 0 then
 						name = string.format("%s [%s]", base_name, table.concat(extras, ", "))
