@@ -74,10 +74,9 @@ local function contains(parent, child)
 	return start_after and end_before
 end
 
---- Formatuje tekst węzła do wyświetlenia w outline (np. przycina do 1 linii i max 50 znaków)
+--- Formatuje tekst (używany tylko dla tytułów sekcji, grup, nagłówków i stopek)
 local function format_node_text(node, bufnr)
 	local text = vim.treesitter.get_node_text(node, bufnr) or ""
-	-- Bierzemy tylko pierwszą linię tekstu
 	text = text:match("([^\r\n]*)") or text
 	text = vim.trim(text)
 	if #text > 50 then
@@ -149,16 +148,16 @@ function M.request_symbols(callback, opts, info)
 				is_container = true
 			elseif capture_name == "definition.narration" then
 				kind = 13 -- Variable / Narration
-				name = format_node_text(node, bufnr)
+				name = "Narration" -- Wyświetlana nazwa zamiast tekstu
 			elseif capture_name == "definition.quotation" then
 				kind = 15 -- String / Quotation
-				name = format_node_text(node, bufnr)
+				name = "Quotation" -- Wyświetlana nazwa zamiast tekstu
 			elseif capture_name == "definition.dialog" then
 				kind = 1 -- Text / Dialog
-				name = format_node_text(node, bufnr)
+				name = "Dialog" -- Wyświetlana nazwa zamiast tekstu
 			elseif capture_name == "definition.comment" then
 				kind = 1 -- Comment
-				name = format_node_text(node, bufnr)
+				name = "Comment" -- Wyświetlana nazwa zamiast tekstu
 			elseif capture_name == "definition.header" then
 				kind = 12 -- Header w grupie
 				name = "Header: " .. format_node_text(node, bufnr)
@@ -183,8 +182,7 @@ function M.request_symbols(callback, opts, info)
 		end
 	end
 
-	-- Sortujemy symbole od największych do najmniejszych zakresów,
-	-- dzięki czemu kontenery (sekcje/grupy) procesujemy przed ich dziećmi.
+	-- Sortowanie od największych do najmniejszych zakresów (kontenery pierwej)
 	table.sort(raw_symbols, function(a, b)
 		local span_a = (a.range["end"].line - a.range.start.line) * 1000
 			+ (a.range["end"].character - a.range.start.character)
@@ -193,7 +191,7 @@ function M.request_symbols(callback, opts, info)
 		return span_a > span_b
 	end)
 
-	-- Automatyczne budowanie hierarchii drzewa na podstawie zakresów
+	-- Budowanie hierarchii drzewa
 	local tree_symbols = {}
 	for _, sym in ipairs(raw_symbols) do
 		local function insert_into(list)
@@ -216,7 +214,7 @@ function M.request_symbols(callback, opts, info)
 		end
 	end
 
-	-- Czyszczenie flag wewnętrznych przed zwrotem danych
+	-- Czyszczenie flag wewnętrznych
 	local function cleanup(nodes)
 		for _, n in ipairs(nodes) do
 			n.is_container = nil
