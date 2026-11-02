@@ -50,7 +50,7 @@ end
 -- 3. FUNKCJE POMOCNICZE
 -- ============================================================================
 
---- Sprawdza, czy zakres rodzica w pełni zawiera zakres dziecka.
+--- Sprawdza, czy zakres sekcji w pełni zawiera zakres elementu.
 local function contains(parent, child)
 	local p_start = parent.range.start
 	local p_end = parent.range["end"]
@@ -73,13 +73,16 @@ local function contains(parent, child)
 	return start_after and end_before
 end
 
---- Formatuje tekst węzła
+--- Formatuje tekst węzła (dla tytułów sekcji, nagłówków, stopek)
 local function format_node_text(node, bufnr)
 	local text = vim.treesitter.get_node_text(node, bufnr) or ""
 	text = text:match("([^\r\n]*)") or text
 	text = vim.trim(text)
 	if #text > 40 then
-		text = text:sub(1, 37) .. "..." -- Poprawiono błąd: '+' zmieniono na '..'
+		text = text:sub(1, 37) .. "..."
+	end
+	if text == "" then
+		text = "[elem]"
 	end
 	return text
 end
@@ -88,7 +91,7 @@ end
 -- 4. GŁÓWNA FUNKCJA ZBIERAJĄCA SYMBOLE
 -- ============================================================================
 
---- Zbiera symbole i buduje z nich hierarchiczne drzewo.
+--- Zbiera symbole i buduje hierarchię wyłącznie w oparciu o sekcje.
 ---@param callback function
 ---@param opts table
 ---@param info table?
@@ -121,43 +124,8 @@ function M.request_symbols(callback, opts, info)
 	end
 
 	local raw_symbols = {}
-	local group_metas = {} -- Tabela pomocnicza przechowująca header/footer dla grup wg zakresu
 
-	-- Pierwszy przebieg: zbieramy nagłówki (header) i stopki (footer) dla grup
-	for _, match, _ in query:iter_matches(root, bufnr, 0, -1) do
-		for id, nodes in pairs(match) do
-			local capture_name = query.captures[id]
-			local node = type(nodes) == "table" and nodes[1] or nodes
-
-			if capture_name == "definition.group" then
-				local sr, sc, er, ec = node:range()
-				local key = string.format("%d:%d-%d:%d", sr, sc, er, ec)
-				group_metas[key] = group_metas[key] or {}
-			elseif capture_name == "definition.header" then
-				for id_inner, nodes_inner in pairs(match) do
-					if query.captures[id_inner] == "definition.group" then
-						local g_node = type(nodes_inner) == "table" and nodes_inner[1] or nodes_inner
-						local sr, sc, er, ec = g_node:range()
-						local key = string.format("%d:%d-%d:%d", sr, sc, er, ec)
-						group_metas[key] = group_metas[key] or {}
-						group_metas[key].header = format_node_text(node, bufnr)
-					end
-				end
-			elseif capture_name == "definition.footer" then
-				for id_inner, nodes_inner in pairs(match) do
-					if query.captures[id_inner] == "definition.group" then
-						local g_node = type(nodes_inner) == "table" and nodes_inner[1] or nodes_inner
-						local sr, sc, er, ec = g_node:range()
-						local key = string.format("%d:%d-%d:%d", sr, sc, er, ec)
-						group_metas[key] = group_metas[key] or {}
-						group_metas[key].footer = format_node_text(node, bufnr)
-					end
-				end
-			end
-		end
-	end
-
-	-- Drugi przebieg: właściwe budowanie listy symboli
+	-- Iteracja po dopasowaniach zapytania Treesittera
 	for _, match, _ in query:iter_matches(root, bufnr, 0, -1) do
 		local name, range, kind, is_container = nil, nil, 13, false
 
@@ -172,46 +140,27 @@ function M.request_symbols(callback, opts, info)
 			}
 
 			if capture_name == "definition.section" then
-				kind = 18
+				kind = 18 -- Section (rozwijalny kontener)
 				is_container = true
-			elseif capture_name == "definition.group" then
-				kind = 12
-				is_container = true
-
-				local key = string.format("%d:%d-%d:%d", start_row, start_col, end_row, end_col)
-				local meta = group_metas[key]
-				local base_name = name or ""
-
-				if meta then
-					local extras = {}
-					if meta.header and meta.header ~= "" then
-						table.insert(extras, meta.header)
-					end
-					if meta.footer and meta.footer ~= "" then
-						table.insert(extras, meta.footer)
-					end
-					if #extras > 0 then
-						name = string.format("%s [%s]", base_name, table.concat(extras, ", "))
-					else
-						name = base_name
-					end
-				else
-					name = base_name
-				end
+				name = format_node_text(node, bufnr)
+			elseif capture_name == "definition.header" then
+				kind = 12 -- Header
+				name = "Header: " .. format_node_text(node, bufnr)
+			elseif capture_name == "definition.footer" then
+				kind = 12 -- Footer
+				name = "Footer: " .. format_node_text(node, bufnr)
 			elseif capture_name == "definition.narration" then
-				kind = 13
+				kind = 13 -- Narration
 				name = "Narration"
 			elseif capture_name == "definition.quotation" then
-				kind = 15
+				kind = 15 -- Quotation
 				name = "Quotation"
 			elseif capture_name == "definition.dialog" then
-				kind = 1
+				kind = 1 -- Dialog
 				name = "Dialog"
 			elseif capture_name == "definition.comment" then
-				kind = 1
+				kind = 1 -- Comment
 				name = "Comment"
-			elseif capture_name == "definition.header" or capture_name == "definition.footer" then
-				name = nil
 			elseif capture_name == "name" then
 				name = format_node_text(node, bufnr)
 			end
@@ -229,16 +178,19 @@ function M.request_symbols(callback, opts, info)
 		end
 	end
 
-	-- Sortowanie od największych do najmniejszych zakresów
+	-- Bezpieczne sortowanie: najpierw największe zakresy (sekcje), aby trafiły do drzewa jako pierwsze
 	table.sort(raw_symbols, function(a, b)
 		local span_a = (a.range["end"].line - a.range.start.line) * 1000
 			+ (a.range["end"].character - a.range.start.character)
 		local span_b = (b.range["end"].line - b.range.start.line) * 1000
 			+ (b.range["end"].character - b.range.start.character)
-		return span_a > span_b
+		if span_a ~= span_b then
+			return span_a > span_b
+		end
+		return a.range.start.line < b.range.start.line
 	end)
 
-	-- Budowanie hierarchii drzewa
+	-- Budowanie hierarchii (tylko sekcje mogą przyjmować dzieci)
 	local tree_symbols = {}
 	for _, sym in ipairs(raw_symbols) do
 		local function insert_into(list)
@@ -261,16 +213,23 @@ function M.request_symbols(callback, opts, info)
 		end
 	end
 
-	-- Czyszczenie flag wewnętrznych
-	local function cleanup(nodes)
+	-- Funkcja pomocnicza sortująca dzieci w sekcjach pozycją w pliku (od góry do dołu)
+	local function sort_children(nodes)
+		table.sort(nodes, function(a, b)
+			if a.range.start.line == b.range.start.line then
+				return a.range.start.character < b.range.start.character
+			end
+			return a.range.start.line < b.range.start.line
+		end)
 		for _, n in ipairs(nodes) do
 			n.is_container = nil
 			if #n.children > 0 then
-				cleanup(n.children)
+				sort_children(n.children)
 			end
 		end
 	end
-	cleanup(tree_symbols)
+
+	sort_children(tree_symbols)
 
 	callback(tree_symbols, opts)
 end

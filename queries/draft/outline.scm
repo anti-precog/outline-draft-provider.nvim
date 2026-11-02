@@ -1,14 +1,11 @@
-;; Sekcje
+;; Sekcje (jedyny rozwijalny kontener)
 (section
   (title) @name) @definition.section
 
-;; Grupy (łapiemy opcjonalnie header i footer wewnątrz grupy)
-(group
-  (header)? @definition.header
-  (footer)? @definition.footer) @definition.group
-
-;; Elementy treści
+;; Elementy treści oraz nagłówki/stopki jako płaskie wpisy (liście)
 (narration) @definition.narration
 (quotation) @definition.quotation
 (dialog) @definition.dialog
 (comment) @definition.comment
+(header) @definition.header
+(footer) @definition.footer
