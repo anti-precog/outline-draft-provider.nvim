@@ -10,4 +10,8 @@
 ;;(header) @definition.header
 ;;(footer) @definition.footer
 
-(section (title) @title)
+(section
+  (title
+    (tag)
+    name: (name) @title)
+)

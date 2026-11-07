@@ -32,25 +32,25 @@ function M.request_symbols(on_symbols, opts)
 	end
 
 	local symbols = {}
-	-- Zmiana: przekazujemy tree:root() zamiast samego tree
 	for _, node in query:iter_captures(tree:root(), bufnr, 0, -1) do
 		local start_row, _, _, _ = node:range()
-		local text = vim.treesitter.get_node_text(node, bufnr)
+		local section_name = vim.treesitter.get_node_text(node, bufnr)
 
 		table.insert(symbols, {
-			kind = 15,
-			name = text,
+			kind = 14,
+			name = section_name,
 			selectionRange = {
-				start = { character = 2, line = start_row },
-				["end"] = { character = 2, line = start_row },
+				start = { character = 0, line = start_row },
+				["end"] = { character = 0, line = start_row },
 			},
 			range = {
-				start = { character = 2, line = start_row },
-				["end"] = { character = 2, line = start_row },
+				start = { character = 0, line = start_row },
+				["end"] = { character = 0, line = start_row },
 			},
 		})
 	end
 
 	on_symbols(symbols, opts)
 end
+
 return M
