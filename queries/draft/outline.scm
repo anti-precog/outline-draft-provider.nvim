@@ -10,8 +10,5 @@
 ;;(header) @definition.header
 ;;(footer) @definition.footer
 
-(section
-  (title
-    (tag)
-    name: (name) @title)
-)
+(context) @title
+(sub_context) @title
