@@ -31,23 +31,68 @@ function M.request_symbols(on_symbols, opts)
 		return on_symbols({}, opts)
 	end
 
-	local symbols = {}
-	for _, node in query:iter_captures(tree:root(), bufnr, 0, -1) do
-		local start_row, _, _, _ = node:range()
-		local section_name = vim.treesitter.get_node_text(node, bufnr)
+	local items = {}
 
-		table.insert(symbols, {
-			kind = 14,
-			name = section_name,
-			selectionRange = {
-				start = { character = 0, line = start_row },
-				["end"] = { character = 0, line = start_row },
-			},
-			range = {
-				start = { character = 0, line = start_row },
-				["end"] = { character = 0, line = start_row },
-			},
-		})
+	for id, node in query:iter_captures(tree:root(), bufnr, 0, -1) do
+		local capture_name = query.captures[id]
+		local start_row = node:range()
+		local text = vim.treesitter.get_node_text(node, bufnr)
+
+		if capture_name == "context" then
+			table.insert(items, {
+				row = start_row,
+				symbol = {
+					kind = 14,
+					name = text,
+					selectionRange = {
+						start = { character = 0, line = start_row },
+						["end"] = { character = 0, line = start_row },
+					},
+					range = {
+						start = { character = 0, line = start_row },
+						["end"] = { character = 0, line = start_row },
+					},
+					children = {},
+				},
+			})
+		elseif capture_name == "sub_context" then
+			table.insert(items, {
+				row = start_row,
+				symbol = {
+					kind = 12,
+					name = text,
+					selectionRange = {
+						start = { character = 0, line = start_row },
+						["end"] = { character = 0, line = start_row },
+					},
+					range = {
+						start = { character = 0, line = start_row },
+						["end"] = { character = 0, line = start_row },
+					},
+				},
+			})
+		end
+	end
+
+	-- Sortujemy wszystkie elementy rosnąco po numerze wiersza
+	table.sort(items, function(a, b)
+		return a.row < b.row
+	end)
+
+	local symbols = {}
+	local current_ctx = nil
+
+	-- Przypisujemy sub_context do ostatniego napotkanego contextu powyżej
+	for _, item in ipairs(items) do
+		if item.symbol.kind == 14 then
+			current_ctx = item.symbol
+			table.insert(symbols, current_ctx)
+		elseif item.symbol.kind == 12 and current_ctx then
+			table.insert(current_ctx.children, item.symbol)
+		else
+			-- Jeśli sub_context występuje przed jakimkolwiek contextem
+			table.insert(symbols, item.symbol)
+		end
 	end
 
 	on_symbols(symbols, opts)
