@@ -2,6 +2,9 @@ local M = {
 	name = "draft",
 }
 
+local CONTEXT = 2
+local SUB_CONTEXT = 13
+
 function M.supports_buffer(bufnr, config)
 	local ft = vim.bo[bufnr].filetype
 	if config and config.filetypes then
@@ -42,7 +45,7 @@ function M.request_symbols(on_symbols, opts)
 			table.insert(items, {
 				row = start_row,
 				symbol = {
-					kind = 14,
+					kind = CONTEXT,
 					name = text,
 					selectionRange = {
 						start = { character = 0, line = start_row },
@@ -59,7 +62,7 @@ function M.request_symbols(on_symbols, opts)
 			table.insert(items, {
 				row = start_row,
 				symbol = {
-					kind = 12,
+					kind = SUB_CONTEXT,
 					name = text,
 					selectionRange = {
 						start = { character = 0, line = start_row },
@@ -84,10 +87,10 @@ function M.request_symbols(on_symbols, opts)
 
 	-- Przypisujemy sub_context do ostatniego napotkanego contextu powyżej
 	for _, item in ipairs(items) do
-		if item.symbol.kind == 14 then
+		if item.symbol.kind == CONTEXT then
 			current_ctx = item.symbol
 			table.insert(symbols, current_ctx)
-		elseif item.symbol.kind == 12 and current_ctx then
+		elseif item.symbol.kind == SUB_CONTEXT and current_ctx then
 			table.insert(current_ctx.children, item.symbol)
 		else
 			-- Jeśli sub_context występuje przed jakimkolwiek contextem
