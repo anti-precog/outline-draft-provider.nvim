@@ -77,7 +77,6 @@ function M.request_symbols(on_symbols, opts)
 		end
 	end
 
-	-- Sortujemy wszystkie elementy rosnąco po numerze wiersza
 	table.sort(items, function(a, b)
 		return a.row < b.row
 	end)
@@ -85,7 +84,6 @@ function M.request_symbols(on_symbols, opts)
 	local symbols = {}
 	local current_ctx = nil
 
-	-- Przypisujemy sub_context do ostatniego napotkanego contextu powyżej
 	for _, item in ipairs(items) do
 		if item.symbol.kind == CONTEXT then
 			current_ctx = item.symbol
@@ -93,7 +91,6 @@ function M.request_symbols(on_symbols, opts)
 		elseif item.symbol.kind == SUB_CONTEXT and current_ctx then
 			table.insert(current_ctx.children, item.symbol)
 		else
-			-- Jeśli sub_context występuje przed jakimkolwiek contextem
 			table.insert(symbols, item.symbol)
 		end
 	end
